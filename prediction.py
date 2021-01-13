@@ -1,146 +1,141 @@
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
-
-import numpy as np
-import random
 import pandas as pd
 import matplotlib.pyplot as plt
-from pandas import datetime
-import math, time
-import itertools
-from sklearn import preprocessing
+import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-import datetime
-from operator import itemgetter
+from help_methods import create_dataset
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import LSTM
+import tensorflow as tf
+import math
 from sklearn.metrics import mean_squared_error
-from math import sqrt
 
-from models import LSTM
-from aux import load_data
+plt.rc('xtick', labelsize=15)
+plt.rc('ytick', labelsize=15)
 
-# Load data
+look_back = 100
 
-dates = pd.date_range('2008-01-01','2020-08-01',freq='B')
-df1=pd.DataFrame(index=dates)
-df_aapl=pd.read_csv("./data/selected_stocks/AAPL_max.csv", parse_dates=True, index_col=0)
-df_aapl=df1.join(df_aapl)
+### model
+model=Sequential()
+model.add(LSTM(50,return_sequences=True,input_shape=(look_back,1)))
+model.add(LSTM(50,return_sequences=True))
+model.add(LSTM(50))
+model.add(Dense(1))
+model.compile(loss='mean_squared_error',optimizer='adam')
+###
 
-df_aapl=df_aapl[['Close']]
+print(model.summary())
+exit()
 
-scaler = MinMaxScaler(feature_range=(-1, 1))
-df_aapl['Close'] = scaler.fit_transform(df_aapl['Close'].values.reshape(-1,1))
+#df=pd.read_csv('./data/AAPL.csv')
+df=pd.read_csv('./data/selected_stocks/WDI.DE_shorten.csv')
+#df1=df.reset_index()['close']
+df1 = df.reset_index()['Close']
+df1 = df1.dropna()
 
-look_back = 20 # choose sequence length
-x_train, y_train, x_test, y_test = load_data(df_aapl, look_back)
+dataset_length = df1.shape[0]
+look_back=100
 
-# make training and test sets in torch
-x_train = torch.from_numpy(x_train).type(torch.Tensor)
-x_test = torch.from_numpy(x_test).type(torch.Tensor)
-y_train = torch.from_numpy(y_train).type(torch.Tensor)
-y_test = torch.from_numpy(y_test).type(torch.Tensor)
+scaler=MinMaxScaler(feature_range=(0,1))
+df1=scaler.fit_transform(np.array(df1).reshape(-1,1))
 
-n_steps = look_back-1
-batch_size = 500
-#n_iters = 3000
-num_epochs = 100 #n_iters / (len(train_X) / batch_size)
-#num_epochs = int(num_epochs)
+training_size=int(len(df1)*0.8)
+test_size=len(df1)-training_size
+train_data,test_data=df1[0:training_size,:],df1[training_size:len(df1),:1]
 
-train = torch.utils.data.TensorDataset(x_train,y_train)
-test = torch.utils.data.TensorDataset(x_test,y_test)
+# reshaping (X=t,t+1,t+2,t+3, target: Y=t+4)
+X_train, y_train = create_dataset(train_data, look_back)
+X_test, ytest = create_dataset(test_data, look_back)
 
-train_loader = torch.utils.data.DataLoader(dataset=train,
-                                           batch_size=batch_size,
-                                           shuffle=False)
+# reshape input to be [samples, time steps, features] which is required for LSTM
+X_train =X_train.reshape(X_train.shape[0],X_train.shape[1] , 1)
+X_test = X_test.reshape(X_test.shape[0],X_test.shape[1] , 1)
 
-test_loader = torch.utils.data.DataLoader(dataset=test,
-                                          batch_size=batch_size,
-                                          shuffle=False)
+model.fit(X_train,y_train,validation_data=(X_test,ytest),epochs=50,batch_size=64,verbose=1)
 
+### prediction
+train_predict=model.predict(X_train)
+test_predict=model.predict(X_test)
+## transofrm back to original format
+train_predict=scaler.inverse_transform(train_predict)
+test_predict=scaler.inverse_transform(test_predict)
 
-# intiate the model
+### loss error RMSE
+error_train = math.sqrt(mean_squared_error(y_train,train_predict))
+### loss error RMSE
+math.sqrt(mean_squared_error(ytest,test_predict))
 
-input_dim = 1
-hidden_dim = 32
-num_layers = 2
-output_dim = 1
-
-model = LSTM(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, num_layers=num_layers)
-
-loss_fn = torch.nn.MSELoss()
-optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
-
-
-# Train model
-
-hist = np.zeros(num_epochs)
-
-# Number of steps to unroll
-seq_dim = look_back - 1
-
-for t in range(num_epochs):
-    # Initialise hidden state
-    # Don't do this if you want your LSTM to be stateful
-    # model.hidden = model.init_hidden()
-
-    # Forward pass
-    y_train_pred = model(x_train)
-    print(y_train_pred)
-    loss = loss_fn(y_train_pred, y_train)
-    if t % 10 == 0 and t != 0:
-        print("Epoch ", t, "MSE: ", loss.item())
-    hist[t] = loss.item()
-
-    # Zero out gradient, else they will accumulate between epochs
-    optimiser.zero_grad()
-
-    # Backward pass
-    loss.backward()
-
-    # Update parameters
-    optimiser.step()
-
-print(len(y_train_pred))
-print(len(y_train))
-plt.plot(y_train_pred.detach().numpy(), label="Preds")
-plt.plot(y_train.detach().numpy(), label="Data")
-plt.legend()
-plt.show()
-
-plt.plot(hist, label="Training loss")
-plt.legend()
-plt.show()
-
-y_test_pred = model(x_test)
-
-# invert predictions
-y_train_pred = scaler.inverse_transform(y_train_pred.detach().numpy())
-y_train = scaler.inverse_transform(y_train.detach().numpy())
-y_test_pred = scaler.inverse_transform(y_test_pred.detach().numpy())
-y_test = scaler.inverse_transform(y_test.detach().numpy())
-
-# calculate root mean squared error
-trainScore = math.sqrt(mean_squared_error(y_train[:,0], y_train_pred[:,0]))
-print('Train Score: %.2f RMSE' % (trainScore))
-testScore = math.sqrt(mean_squared_error(y_test[:,0], y_test_pred[:,0]))
-print('Test Score: %.2f RMSE' % (testScore))
-
-
-
-# shift train predictions for plotting
-trainPredictPlot = np.empty_like(df_aapl)
+trainPredictPlot = np.empty_like(df1)
 trainPredictPlot[:, :] = np.nan
-trainPredictPlot[look_back:len(y_train_pred)+look_back, :] = y_train_pred
-
+trainPredictPlot[look_back:len(train_predict)+look_back, :] = train_predict
 # shift test predictions for plotting
-testPredictPlot = np.empty_like(df_aapl)
+testPredictPlot = np.empty_like(df1)
 testPredictPlot[:, :] = np.nan
-testPredictPlot[len(y_train_pred)+look_back-1:len(df_aapl)-1, :] = y_test_pred
-
+testPredictPlot[len(train_predict)+(look_back*2)+1:len(df1)-1, :] = test_predict
 # plot baseline and predictions
-plt.figure(figsize=(15,8))
-plt.plot(scaler.inverse_transform(df_aapl))
-plt.plot(trainPredictPlot)
-plt.plot(testPredictPlot)
+plt.plot(scaler.inverse_transform(df1), color='red', label='real data')
+plt.plot(trainPredictPlot, color="green", label='training data')
+plt.plot(testPredictPlot, color="blue", label='evaluation data')
+
+plt.xlabel('Date', fontsize=15)
+plt.legend(prop={'size': 15})
+plt.xticks(color='w')
+plt.tight_layout()
 plt.show()
+
+x_input=test_data[len(test_data)-look_back:].reshape(1,-1)
+
+temp_input=list(x_input)
+temp_input=temp_input[0].tolist()
+
+day_to_predict = 30
+lst_output = []
+n_steps = look_back
+i = 0
+while (i < day_to_predict):
+
+    if (len(temp_input) > look_back):
+        x_input = np.array(temp_input[1:])
+        x_input = x_input.reshape(1, -1)
+        x_input = x_input.reshape((1, n_steps, 1))
+        yhat = model.predict(x_input, verbose=0)
+        temp_input.extend(yhat[0].tolist())
+        temp_input = temp_input[1:]
+        lst_output.extend(yhat.tolist())
+        i = i + 1
+    else:
+        x_input = x_input.reshape((1, n_steps, 1))
+        yhat = model.predict(x_input, verbose=0)
+        temp_input.extend(yhat[0].tolist())
+        lst_output.extend(yhat.tolist())
+        i = i + 1
+
+temp = look_back
+day_new=np.arange(1,temp)
+day_pred=np.arange(temp-1,temp + day_to_predict)
+
+plt.plot(day_new,scaler.inverse_transform(df1[dataset_length-(temp-1):]), color='black', label="passed through the model")
+
+df=pd.read_csv('./data/selected_stocks/WDI.DE_shorten.csv')
+df1 = df.reset_index()['Close']
+df1 = df1.dropna()
+last_day = df1.values.tolist()[len(df1.values.tolist())-1]
+
+plt.plot(day_pred, [last_day] + scaler.inverse_transform(lst_output).T.tolist()[0], color='orange', label='predicted')
+
+df=pd.read_csv('./data/selected_stocks/WDI-DE_tail.csv')
+df1 = df.reset_index()['Close']
+df1 = df1.dropna()
+
+day_new=np.arange(temp-1,temp-1 + len(df1.values)+2)
+
+plt.plot(day_new, [last_day] + df['Close'].values.tolist(), color='red', label='real data')
+
+plt.xticks(color='w')
+plt.legend(prop={'size': 15})
+plt.xlabel('Date', fontsize=15)
+plt.tight_layout()
+plt.show()
+
+
 
