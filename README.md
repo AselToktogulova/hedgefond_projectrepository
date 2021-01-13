@@ -1,6 +1,6 @@
 # Hedge Fund Project Repository (a student project)
 
-This is a repository where you can find some python methods whereby we made some stock vizualisations as well as a model which was trained on wirecard stock data in order to examine the performance of the model on rapidly dropping stock data time series.
+This is a repository where you can find some python methods whereby we made a bunch of stock vizualisations as well as a model which was trained on wirecard stock data in order to examine the performance of the model on rapidly dropping stock data time series.
 
 
     .
