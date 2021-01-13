@@ -4,7 +4,7 @@ This is a repository where you can find some python methods whereby we made some
 
 
     .
-    ├── data                          # stock data (a little messy order in directory)
+    ├── data                          # stock data (a little messy order in directory; periodenoverview file is not availible because of privacy)
     ├── help_methods.py               # auxilarities
     ├── prediction.py                 # a LSTM model which is trained on Wirecard data and a prediction of the next 30 days 
     ├── stock_vizualisation.py        # here are some methodes applied on stock data for vizualisation
