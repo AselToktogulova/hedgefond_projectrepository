@@ -24,12 +24,7 @@ model.add(Dense(1))
 model.compile(loss='mean_squared_error',optimizer='adam')
 ###
 
-print(model.summary())
-exit()
-
-#df=pd.read_csv('./data/AAPL.csv')
 df=pd.read_csv('./data/selected_stocks/WDI.DE_shorten.csv')
-#df1=df.reset_index()['close']
 df1 = df.reset_index()['Close']
 df1 = df1.dropna()
 
