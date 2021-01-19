@@ -28,7 +28,8 @@ def stocks_data(dir, dates, spec=None):
 
 def daily_return(df):
     dr = df.copy()
-    dr = dr[:-1].values / dr[1:] - 1
+    #dr = dr[:-1].values / dr[1:] - 1 used in the printed version incorrectly (a slight error has crept in, I beg your pardon)
+    dr = dr[1:] / dr[:-1].values  - 1
     return dr
 
 def get_ROC(df, ndays):
